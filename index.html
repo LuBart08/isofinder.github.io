@@ -1,0 +1,238 @@
+
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ISO Hub — ISOs officielles & vérification</title>
+<style>
+  :root{--bg:#0f1724;--card:#0b1220;--muted:#9aa4b2;--accent:#00b4d8;--glass: rgba(255,255,255,0.03)}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+  body{background:linear-gradient(180deg,#071026 0%, #071827 60%);color:#e6eef6;padding:24px;}
+  .container{max-width:1100px;margin:0 auto;}
+  header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+  h1{font-size:1.5rem;margin:0}
+  p.lead{margin:0;color:var(--muted)}
+  .controls{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  input[type=search]{padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:var(--glass);color:inherit;min-width:220px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:18px}
+  .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:14px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
+  .card h3{margin:0 0 6px 0;font-size:1.05rem}
+  .meta{color:var(--muted);font-size:0.9rem;margin-bottom:8px}
+  .btn{display:inline-block;padding:8px 10px;border-radius:8px;text-decoration:none;font-weight:600;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;margin-right:8px}
+  .btn.primary{background:linear-gradient(90deg,var(--accent),#6de0ff);color:#042027;border:none}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+  .small{font-size:0.85rem;color:var(--muted);margin-top:8px}
+  footer{margin-top:26px;color:var(--muted);font-size:0.85rem}
+  .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,0.6);z-index:40}
+  .modal.show{display:flex}
+  .modal-card{width:min(720px,94%);background:#071427;padding:18px;border-radius:12px;border:1px solid rgba(255,255,255,0.04)}
+  pre{background:#03131b;padding:12px;border-radius:8px;overflow:auto;color:#dff3fb}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .badge{background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:999px;font-weight:600}
+  .copy{cursor:pointer;padding:6px 10px;border-radius:8px;border:1px dashed rgba(255,255,255,0.04);background:transparent}
+  @media (max-width:460px){header{flex-direction:column;align-items:flex-start}}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <h1>ISO Hub — ISOs officielles & vérification</h1>
+      <p class="lead">Un index simple pointant vers les images ISO officielles et les pages de vérification (checksums / signatures).</p>
+    </div>
+  </header>
+
+  <div class="controls">
+    <input id="search" type="search" placeholder="Rechercher (ex: Ubuntu, Windows, Fedora...)" />
+    <div style="margin-left:auto" class="row">
+      <button class="btn ghost" id="showAll">Afficher tout</button>
+      <button class="btn primary" id="openVerify">Comment vérifier</button>
+    </div>
+  </div>
+
+  <div id="list" class="grid" aria-live="polite">
+    <!-- cards injected by JS -->
+  </div>
+
+  <footer>
+    <div>Important : <strong>Télécharge toujours depuis la page officielle</strong> et vérifie les checksums/signatures avant usage.</div>
+  </footer>
+</div>
+
+<!-- modal vérification -->
+<div id="modal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="modal-card">
+    <h2 style="margin-top:0">Comment vérifier une ISO (rapide)</h2>
+    <p class="small">Procédure générale (Linux/macOS/WSL) — pour Windows voir la ligne PowerShell plus bas.</p>
+    <ol>
+      <li>Téléchargez l’ISO + le fichier de sommes (ex : SHA256SUMS ou SHA256SUMS.gpg) depuis le site officiel.</li>
+      <li>Vérifiez la signature GPG (si fournie) : <code>gpg --verify SHA256SUMS.gpg SHA256SUMS</code></li>
+      <li>Vérifiez le hash : <code>sha256sum -c SHA256SUMS  # ou sha512sum -c SHA512SUMS</code></li>
+      <li>Sur macOS : <code>shasum -a 256 <nom-fichier.iso></code></li>
+      <li>Sur Windows PowerShell : <code>Get-FileHash -Path .\nom.iso -Algorithm SHA256</code></li>
+    </ol>
+    <p class="small">Si vous avez seulement une valeur de hash affichée (par ex. sur la page web), comparez-la au résultat de la commande (exact match).</p>
+    <p class="small">Si la page officielle fournit une signature GPG pour le fichier de sommes, vérifiez-la toujours (empêche la falsification des sommes).</p>
+    <div style="text-align:right;margin-top:8px">
+      <button class="btn ghost" id="closeModal">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ====== Données (éditables) ====== 
+   Chaque item : {id, name, description, download, verify, notes}
+   Les liens download/verify doivent pointer vers les pages officielles.
+*/
+const items = [
+  {
+    id: "ubuntu",
+    name: "Ubuntu (Desktop & Server)",
+    description: "Images officielles Ubuntu — Desktop, Server, flavours.",
+    download: "https://ubuntu.com/download",
+    verify: "https://ubuntu.com/tutorials/how-to-verify-ubuntu",
+    notes: "Ubuntu fournit SHA256 et instructions de vérification GPG."
+  },
+  {
+    id: "fedora",
+    name: "Fedora Workstation",
+    description: "Image officielle Fedora Workstation (desktop).",
+    download: "https://fedoraproject.org/workstation/download/",
+    verify: "https://fedoraproject.org/",
+    notes: "La page de téléchargement contient aussi liens vers checksums et torrents."
+  },
+  {
+    id: "debian",
+    name: "Debian (Stable)",
+    description: "Images officielles Debian (install/Live) et mirrors.",
+    download: "https://www.debian.org/distrib/",
+    verify: "https://www.debian.org/CD/verify",
+    notes: "Debian fournit SHA256/512 et signatures GPG pour les fichiers de sommes."
+  },
+  {
+    id: "arch",
+    name: "Arch Linux",
+    description: "Image officielle d'installation d'Arch (x86_64).",
+    download: "https://archlinux.org/download/",
+    verify: "https://archlinux.org/",
+    notes: "Arch propose ISOs et liens vers mirrors/torrents."
+  },
+  {
+    id: "almalinux",
+    name: "AlmaLinux (RHEL-compatible)",
+    description: "Distribution entreprise gratuite — ISOs disponibles depuis les mirrors.",
+    download: "https://almalinux.org/get-almalinux/",
+    verify: "https://almalinux.org/",
+    notes: "Téléchargement via mirrors ; vérifiez les fichiers SHA256 fournis."
+  },
+  {
+    id: "manjaro",
+    name: "Manjaro",
+    description: "Live ISOs Manjaro (différentes éditions : XFCE, KDE, GNOME).",
+    download: "https://manjaro.org/products/",
+    verify: "https://manjaro.org/",
+    notes: "Pages de téléchargement incluent checksums et signatures."
+  },
+  {
+    id: "windows11",
+    name: "Windows 11 (Microsoft)",
+    description: "Page officielle Microsoft pour télécharger l'ISO Windows 11.",
+    download: "https://www.microsoft.com/software-download/windows11",
+    verify: "https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/get-filehash",
+    notes: "Microsoft fournit l'ISO officiel; utilisez Get-FileHash en PowerShell pour vérifier."
+  },
+  {
+    id: "freebsd",
+    name: "FreeBSD",
+    description: "Images officielles FreeBSD (DVD/bootonly/VM images).",
+    download: "https://www.freebsd.org/where/",
+    verify: "https://download.freebsd.org/ftp/releases/ISO-IMAGES/",
+    notes: "FreeBSD propose checksums pour chaque release."
+  }
+];
+
+/* ====== UI helpers ====== */
+const listEl = document.getElementById('list');
+const searchEl = document.getElementById('search');
+const modal = document.getElementById('modal');
+
+function createCard(item){
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.innerHTML = `
+    <h3>${escapeHtml(item.name)}</h3>
+    <div class="meta">${escapeHtml(item.description)}</div>
+    <div class="row" style="margin-bottom:8px">
+      <a class="btn primary" href="${item.download}" target="_blank" rel="noopener">Télécharger (officiel)</a>
+      <a class="btn ghost" href="${item.verify}" target="_blank" rel="noopener">Page vérification</a>
+      <button class="btn ghost" data-id="${item.id}" onclick="openQuick(${JSON.stringify(item.id)})">Instructions</button>
+    </div>
+    <div class="small">${escapeHtml(item.notes)}</div>
+  `;
+  return div;
+}
+
+function render(list){
+  listEl.innerHTML = '';
+  if(list.length === 0){
+    listEl.innerHTML = '<div class="card"><p>Aucun résultat</p></div>';
+    return;
+  }
+  list.forEach(i => listEl.appendChild(createCard(i)));
+}
+
+/* simple escape to avoid injection if you edit data */
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]); }
+
+/* quick modal showing commands for a distro (generic) */
+function openQuick(id){
+  const item = items.find(x => x.id === id);
+  if(!item) return;
+  modal.querySelector('.modal-card').innerHTML = `
+    <h2 style="margin-top:0">${escapeHtml(item.name)} — vérification rapide</h2>
+    <p class="small">${escapeHtml(item.notes)}</p>
+    <div>
+      <strong>Linux / macOS (SHA256)</strong>
+      <pre>sha256sum nom_du_fichier.iso
+# OU si vous avez le fichier SHA256SUMS:
+sha256sum -c SHA256SUMS</pre>
+
+      <strong>Windows PowerShell</strong>
+      <pre>Get-FileHash -Path .\\nom_du_fichier.iso -Algorithm SHA256</pre>
+
+      <strong>GPG (si signature fournie)</strong>
+      <pre>gpg --verify SHA256SUMS.gpg SHA256SUMS</pre>
+    </div>
+    <div style="text-align:right;margin-top:8px">
+      <a class="btn primary" href="${item.download}" target="_blank" rel="noopener">Aller au téléchargement</a>
+      <a class="btn ghost" href="${item.verify}" target="_blank" rel="noopener">Voir la page vérif</a>
+      <button class="btn ghost" id="closeModal2">Fermer</button>
+    </div>
+  `;
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden','false');
+  document.getElementById('closeModal2').onclick = closeModal;
+}
+
+/* events */
+searchEl.addEventListener('input', ()=> {
+  const q = searchEl.value.trim().toLowerCase();
+  if(!q) return render(items);
+  const filtered = items.filter(i => (i.name + ' ' + i.description + ' ' + i.notes).toLowerCase().includes(q));
+  render(filtered);
+});
+document.getElementById('showAll').addEventListener('click', ()=> { searchEl.value=''; render(items); });
+document.getElementById('openVerify').addEventListener('click', ()=> { modal.classList.add('show'); modal.setAttribute('aria-hidden','false'); });
+document.getElementById('closeModal').addEventListener('click', closeModal);
+modal.addEventListener('click', e => { if(e.target === modal) closeModal(); });
+function closeModal(){ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); render(items); }
+
+/* render initial */
+render(items);
+
+/* small utility in case someone wants direct JSON export */
+window.ISO_ITEMS = items;
+</script>
+</body>
+</html>
